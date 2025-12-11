@@ -256,11 +256,11 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
     
     X_futuro = df_futuro[FEATURES]
     
-    st.warning("""
-        🚨 **Atenção: A previsão está monótona (só descida ou subida constante) porque as features de entrada são as mesmas para todos os dias futuros.**
-        
-        **Ação necessária:** Para obter previsões variadas e corretas, insira a lógica de **engenharia de recursos recursiva** neste bloco (Dia N+1 depende da previsão do Dia N).
-    """)
+   # st.warning("""
+    #    🚨 **Atenção: A previsão está monótona (só descida ou subida constante) porque as features de entrada são as mesmas para todos os dias futuros.**
+    #    
+    #    **Ação necessária:** Para obter previsões variadas e corretas, insira a lógica de **engenharia de recursos recursiva** neste bloco (Dia N+1 depende da previsão do Dia N).
+    #""")
     
     # 💡 SUBSTITUIÇÃO TEMPORÁRIA: SIMULAÇÃO DE PREVISÃO VARIADA PARA TESTAR A VISUALIZAÇÃO
     previsoes = np.random.choice([-1, 1], size=input_qtd_dias)
