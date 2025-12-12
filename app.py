@@ -351,9 +351,9 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
     """)
 
     # AVISO SOBRE FEATURES
-    st.warning("""
-        **Próxima Revisão:** Se a sua previsão ainda não for variada, você deve implementar a lógica para atualizar **todas** as features de lag baseadas em preço (`maS_lag_1`, `volatilidadeM_lag_1`, etc.) usando o `P_predito` a cada iteração.
-    """)
+    #st.warning("""
+    #    **Próxima Revisão:** Se a sua previsão ainda não for variada, você deve implementar a lógica para atualizar **todas** as features de lag baseadas em preço (`maS_lag_1`, `volatilidadeM_lag_1`, etc.) usando o `P_predito` a cada iteração.
+    #""")
          
 
     
