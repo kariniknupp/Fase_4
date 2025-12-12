@@ -111,48 +111,88 @@ st.header("📊 Análise Exploratória: Preço, Média Móvel e Desvio Padrão")
 # 5.1 Controles do Usuário
 col_periodo, col_ma_window, col_checkbox = st.columns([1, 1, 1])
 
+# Lógica de conversão para cálculos
+df_analise = df.copy()
+df_analise['ds'] = pd.to_datetime(df_analise['ds']) 
+min_data_disponivel = df_analise['ds'].min()
+max_data_disponivel = df_analise['ds'].max()
+
+
+# --- INPUT 1: Seleção de Período ---
 with col_periodo:
     periodo_selecionado = st.radio(
         "Selecione o Período Histórico",
-        ['Último Ano', 'Últimos 2 Anos', 'Todo o Período'],
+        ['Último Ano', 'Últimos 2 Anos', 'Todo o Período', 'Customizar Intervalo'],
         horizontal=True
     )
 
+# --- INPUT 2: Janela da Média Móvel ---
 with col_ma_window:
     ma_window = st.slider(
         "Janela da Média Móvel (dias úteis)",
         min_value=10, max_value=252, value=50, step=10
     )
 
+# --- INPUT 3: Exibir Desvio Padrão ---
 with col_checkbox:
-    # Espaçamento para alinhar com o radio button
     st.markdown("<br>", unsafe_allow_html=True) 
     mostrar_std = st.checkbox("Exibir Desvio Padrão (Banda)", value=True)
 
+
+# --- INPUT 4: Customização de Data (Aparece somente se selecionado) ---
+start_date_custom = None
+end_date_custom = None
+
+if periodo_selecionado == 'Customizar Intervalo':
+    st.markdown("##### Selecione o Intervalo Desejado")
+    col_start, col_end = st.columns(2)
+    
+    with col_start:
+        start_date_custom = st.date_input(
+            "Data de Início",
+            # Padrão de 6 meses atrás
+            value=max_data_disponivel - pd.DateOffset(months=6), 
+            min_value=min_data_disponivel,
+            max_value=max_data_disponivel
+        )
+        
+    with col_end:
+        end_date_custom = st.date_input(
+            "Data Final",
+            value=max_data_disponivel,
+            min_value=min_data_disponivel,
+            max_value=max_data_disponivel
+        )
+
+
 # 5.2 Lógica de Slicing e Cálculo
-df_analise = df.copy()
-# Converte a coluna 'ds' de volta para datetime para permitir cálculos de offset de data
-df_analise['ds'] = pd.to_datetime(df_analise['ds']) 
+start_date = min_data_disponivel
+end_date = max_data_disponivel
 
-end_date = df_analise['ds'].max()
-
+# Lógica de Filtro
 if periodo_selecionado == 'Último Ano':
-    # DateOffset(years=1) é mais seguro que timedelta(days=365) para anos
-    start_date = end_date - pd.DateOffset(years=1)
+    start_date = max_data_disponivel - pd.DateOffset(years=1)
 elif periodo_selecionado == 'Últimos 2 Anos':
-    start_date = end_date - pd.DateOffset(years=2)
-else:
-    start_date = df_analise['ds'].min()
+    start_date = max_data_disponivel - pd.DateOffset(years=2)
+elif periodo_selecionado == 'Customizar Intervalo':
+    # Converte os objetos date_input (date) para datetime para o filtro
+    start_date = pd.to_datetime(start_date_custom)
+    end_date = pd.to_datetime(end_date_custom)
+    
+    # Validação de data
+    if start_date > end_date:
+        st.error("Erro: A Data de Início não pode ser posterior à Data Final. Ajuste o intervalo.")
+        st.stop()
 
-# Aplica o filtro de período
-df_slice = df_analise[df_analise['ds'] >= start_date].copy()
+
+# Aplica o filtro de período ao DataFrame
+df_slice = df_analise[(df_analise['ds'] >= start_date) & (df_analise['ds'] <= end_date)].copy()
 
 # Cálculo da Média Móvel e Desvio Padrão
-# O window 'ma_window' usa apenas os dias úteis (índice)
 df_slice['MA'] = df_slice['fechamento'].rolling(window=ma_window).mean()
 df_slice['STD'] = df_slice['fechamento'].rolling(window=ma_window).std()
-df_slice['Upper_Band'] = df_slice['MA'] + (df_slice['STD'] * 2) # 2x desvio padrão
-df_slice['Lower_Band'] = df_slice['MA'] - (df_slice['STD'] * 2) # 2x desvio padrão
+df_slice['Upper_Band'] = df_slice['MA'] + (df_slice['STD'] * 2) 
+df_slice['Lower_Band'] = df_slice['MA'] - (df_slice['STD'] * 2) 
 
 # 5.3 Plotagem com Plotly Graph Objects
 fig_analise = go.Figure()
@@ -175,30 +215,28 @@ fig_analise.add_trace(go.Scatter(
 
 # Traços 3 e 4 (Opcional): Desvio Padrão (Usando fill para criar a banda)
 if mostrar_std:
-    # Banda Superior (preenchimento iniciado aqui)
     fig_analise.add_trace(go.Scatter(
         x=df_slice['ds'], y=df_slice['Upper_Band'],
         mode='lines',
         name='Banda Superior',
         line=dict(width=0), 
-        fillcolor='rgba(255, 165, 0, 0.15)', # Cor transparente para o preenchimento
-        fill='tonexty', # Preenche até a linha anterior (MA)
-        hoverinfo='skip' # Não mostrar o hover nesta linha
+        fillcolor='rgba(255, 165, 0, 0.15)', 
+        fill='tonexty', 
+        hoverinfo='skip' 
     ))
-    # Banda Inferior (preenchimento até a linha superior, completando a banda)
     fig_analise.add_trace(go.Scatter(
         x=df_slice['ds'], y=df_slice['Lower_Band'],
         mode='lines',
         name='Banda Inferior (Desvio Padrão)',
         line=dict(width=0), 
-        fill='tonexty', # Preenche da linha atual (Lower) até a Upper
+        fill='tonexty', 
         fillcolor='rgba(255, 165, 0, 0.15)' 
     ))
 
 
 # Layout e Customização
 fig_analise.update_layout(
-    title=f'Análise de Fechamento do IBOVESPA - {periodo_selecionado}',
+    title=f'Análise de Fechamento do IBOVESPA - Período Selecionado',
     xaxis_title='Data',
     yaxis_title='Valor do Índice (R$)',
     hovermode='x unified',
@@ -206,7 +244,6 @@ fig_analise.update_layout(
 )
 
 st.plotly_chart(fig_analise, use_container_width=True)
-
 
 # ====================================================================
 # 6. SEÇÃO DE PREVISÃO DO MODELO
@@ -220,7 +257,8 @@ st.write('Escolha para quantos dias deseja a previsão de tendência:')
 opcoes_dias = {
     'Próximo Dia (1)': 1,
     'Próximos 5 Dias': 5,
-    'Próximos 10 Dias': 10
+    'Próximos 10 Dias': 10,
+    'Próximos 15 Dias': 15
 }
 
 selecao = st.radio("Selecione a Janela de Previsão", list(opcoes_dias.keys()), horizontal=True)
@@ -249,25 +287,75 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
     # Repete as features do último dia conhecido (CAUSA PREVISÃO MONÓTONA)
     for feature in FEATURES:
          df_futuro[feature] = ultimo_df_historico[feature].iloc[0]
+    
+    # ------------------------------------------------------------------
+    # 6.2 GERAÇÃO DA PREVISÃO: LÓGICA RECURSIVA PARA REGRESSOR
+    # ------------------------------------------------------------------
+
+    # --- 1. PREPARAÇÃO DO PONTO DE PARTIDA ---
+    # Recupera o último valor real o índice para iniciar a recursão
+    df_ultimo = df_processado.iloc[[-1]]
+    P_last_real = df_ultimo['fechamento'].values[0] # Valor de fechamento real
+
+    # O preço de referência para o primeiro cálculo de tendência (será o P_last_real)
+    P_referencia = P_last_real 
+
+    # Cópia do vetor de features do último dia (base para o loop)
+    X_base = df_ultimo[FEATURES].values[0].copy()
+
+    # Encontra o índice da feature de lag do fechamento no vetor FEATURES
+    try:
+        fechamento_lag_index = FEATURES.index('fechamento_lag_1')
+    except ValueError:
+        st.error("Erro: A feature 'fechamento_lag_1' não foi encontrada na lista de FEATURES. Verifique se o nome está correto no seu DataFrame processado.")
+        st.stop()
+
+    # Lista para armazenar as previsões futuras (data e y_pred de TENDÊNCIA)
+    resultados_recursivos = []
+    # Lista para armazenar o valor predito (opcional, para debug)
+    precos_preditos = [] 
+
+    # --- 2. LOOP RECURSIVO ---
+    for i, data_futura in enumerate(datas_futuras):
+        # a. Prepara o vetor X para o modelo e prevê o VALOR
+        X_novo = pd.DataFrame([X_base], columns=FEATURES)
+    
+        # O modelo prevê o VALOR do fechamento para o dia N+1
+        P_predito = modelo_ml.predict(X_novo)[0] 
+    
+        # b. CALCULA A TENDÊNCIA (+1 ou -1)
+        # A tendência é baseada na variação do valor predito (P_predito) em relação ao valor de referência (P_referencia)
+        T_predita = 1 if P_predito > P_referencia else -1
+    
+        # c. Armazena o resultado (a TENDÊNCIA é o que será plotado)
+        resultados_recursivos.append({
+            'ds': data_futura,
+            'y_pred': T_predita 
+        })
+    
+        # d. ATUALIZAÇÃO RECURSIVA para a próxima iteração
+        # A nova referência de preço é o preço que acabamos de prever
+        P_referencia = P_predito 
+    
+        # Atualiza a feature 'fechamento_lag_1' para o próximo dia com o P_predito
+        X_base[fechamento_lag_index] = P_predito
+    
+        # ⚠️ ATENÇÃO CRÍTICA: Se o seu modelo usa outras features baseadas em preço (ex: maM_lag_1, volatilidadeS_lag_1), 
+        # você PRECISA de uma lógica aqui para recalculá-las ou o resultado será impreciso.
+    
+    # Converte os resultados em DataFrame
+    df_futuro = pd.DataFrame(resultados_recursivos)
+
+    st.info("""
+        ✅ **Lógica de Regressão Aplicada:** O modelo prevê o valor do índice. A tendência (+1/-1) é calculada comparando o valor predito com o valor do dia anterior (recursivamente).
+    """)
+
+    # AVISO SOBRE FEATURES
+    st.warning("""
+        **Próxima Revisão:** Se a sua previsão ainda não for variada, você deve implementar a lógica para atualizar **todas** as features de lag baseadas em preço (`maS_lag_1`, `volatilidadeM_lag_1`, etc.) usando o `P_predito` a cada iteração.
+    """)
          
-    # ------------------------------------------------------------------
-    # 6.2 GERAÇÃO DA PREVISÃO
-    # ------------------------------------------------------------------
-    
-    X_futuro = df_futuro[FEATURES]
-    
-   # st.warning("""
-    #    🚨 **Atenção: A previsão está monótona (só descida ou subida constante) porque as features de entrada são as mesmas para todos os dias futuros.**
-    #    
-    #    **Ação necessária:** Para obter previsões variadas e corretas, insira a lógica de **engenharia de recursos recursiva** neste bloco (Dia N+1 depende da previsão do Dia N).
-    #""")
-    
-    # 💡 SUBSTITUIÇÃO TEMPORÁRIA: SIMULAÇÃO DE PREVISÃO VARIADA PARA TESTAR A VISUALIZAÇÃO
-    previsoes = np.random.choice([-1, 1], size=input_qtd_dias)
-    # previsoes = modelo_ml.predict(X_futuro) # <--- USE ESTA LINHA COM O FEATURE ENGINEERING CORRETO
-    
-    df_futuro['y_pred'] = previsoes
-    
+
     
     # ------------------------------------------------------------------
     # 6.3 VISUALIZAÇÃO DO GRÁFICO (Foco nos últimos 30 dias + Previsão)
