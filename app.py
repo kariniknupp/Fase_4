@@ -60,13 +60,13 @@ FEATURES = [col for col in df_processado.columns if col not in ['ds', 'y', 'fech
 # ----------------------------------------------------
 # 3. LAYOUT E INPUT DO USUÁRIO
 # ----------------------------------------------------
-st.title('ANÁLISE E PREVISÃO DE TENDÊNCIA DO IBOVESPA :moneybag:')
+st.title('ANÁLISE DE PERÍODOS E PREVISÃO DE TENDÊNCIA DO IBOVESPA :moneybag:')
 
 # ----------------------------------------------------
 # 4. PAINEL DE MÉTRICAS DO MODELO ML (st.sidebar)
 # ----------------------------------------------------
 
-# Resultados obtidos pelo XGBOOST na atividade 2
+# Resultados obtidos pelo XGBOOST na atividade da Fase 2
 METRICAS = {
     "Acurácia Direcional": 77.27,
     "R² Score": -0.061,
@@ -77,7 +77,10 @@ METRICAS = {
 st.sidebar.title("📈 Métricas de Validação (XGBoost)")
 st.sidebar.markdown("Performance do Modelo Treinado:")
 
+st.sidebar.write("Métricas:")
+
 st.sidebar.metric("Acurácia Direcional", f"{METRICAS['Acurácia Direcional']:.2f}%", delta=None) 
+
 st.sidebar.metric("R² Score", f"{METRICAS['R² Score']:.3f}", delta=None) 
 st.sidebar.metric("MAE", f"{METRICAS['MAE (Erro Absoluto)']:.3f}", delta=None)
 st.sidebar.metric("WMAPE", f"{METRICAS['WMAPE']:.3f}", delta=None)
@@ -86,7 +89,9 @@ st.sidebar.markdown("---")
 st.sidebar.info(f"O modelo está usando {len(FEATURES)} features preditoras.")
 
 st.sidebar.info(f"O modelo prevê a tendência (+1 subida, -1 descida) com base em {len(FEATURES)} features.")
-
+st.sidebar.info(f"Features utilizadas: Valor de abertura do dia, Valores do dia anterior: tendência, valor de fechamento, \
+                máxima, mínima, aplitude, delta (fechamento - abertura), variação (delta/abertura), \
+                volatilidade e média móvel - semanal, mensal, trimestral, semestral e anual")
 
 st.write('Período Histórico Analisado:', df['ds'].min(), 'a', df['ds'].max())
 
@@ -97,16 +102,16 @@ coluna1, coluna2, coluna3, coluna4 = st.columns(4)
 with coluna1:
     st.metric('Quantidade de Dias Analisados', df['ds'].count())
 with coluna2:
-    st.metric('Máxima do Índice', df['max'].max())
+    st.metric('Máxima do Índice', df['max'].max().round(2))
 with coluna3:
-    st.metric('Mínima do Índice', df['min'].min())
+    st.metric('Mínima do Índice', df['min'].min().round(2))
 with coluna4:
-    st.metric('Média do Índice', df['fechamento'].mean().round(3))
+    st.metric('Média do Índice', df['fechamento'].mean().round(2))
 
-# ====================================================================
+#  ------------------------------------------------------------
 # 5. NOVA SEÇÃO: ANÁLISE EXPLORATÓRIA CUSTOMIZÁVEL (PREÇO BRUTO)
-# ====================================================================
-st.header("📊 Análise Exploratória: Preço, Média Móvel e Desvio Padrão")
+# --------------------------------------------------------------
+st.header("📊 Análise Exploratória Customizável: Preço, Média Móvel e Desvio Padrão")
 
 # 5.1 Controles do Usuário
 col_periodo, col_ma_window, col_checkbox = st.columns([1, 1, 1])
@@ -142,6 +147,7 @@ with col_checkbox:
 # --- INPUT 4: Customização de Data (Aparece somente se selecionado) ---
 start_date_custom = None
 end_date_custom = None
+data_valida = True
 
 if periodo_selecionado == 'Customizar Intervalo':
     st.markdown("##### Selecione o Intervalo Desejado")
@@ -182,19 +188,46 @@ elif periodo_selecionado == 'Customizar Intervalo':
     # Validação de data
     if start_date > end_date:
         st.error("Erro: A Data de Início não pode ser posterior à Data Final. Ajuste o intervalo.")
+        data_valida = False
         st.stop()
 
+if data_valida:
+    # Aplica o filtro de período ao DataFrame
+    df_slice = df_analise[(df_analise['ds'] >= start_date) & (df_analise['ds'] <= end_date)].copy()
 
-# Aplica o filtro de período ao DataFrame
-df_slice = df_analise[(df_analise['ds'] >= start_date) & (df_analise['ds'] <= end_date)].copy()
+    # Cálculo da Média Móvel e Desvio Padrão
+    df_slice['MA'] = df_slice['fechamento'].rolling(window=ma_window).mean()
+    df_slice['STD'] = df_slice['fechamento'].rolling(window=ma_window).std()
+    df_slice['Upper_Band'] = df_slice['MA'] + (df_slice['STD'] * 2) 
+    df_slice['Lower_Band'] = df_slice['MA'] - (df_slice['STD'] * 2) 
 
-# Cálculo da Média Móvel e Desvio Padrão
-df_slice['MA'] = df_slice['fechamento'].rolling(window=ma_window).mean()
-df_slice['STD'] = df_slice['fechamento'].rolling(window=ma_window).std()
-df_slice['Upper_Band'] = df_slice['MA'] + (df_slice['STD'] * 2) 
-df_slice['Lower_Band'] = df_slice['MA'] - (df_slice['STD'] * 2) 
+# 5.3 Painel de Métricas do Período (MÁXIMA, MÍNIMA, MEDIANA)
+    st.markdown("#### Estatísticas do Período Selecionado")
+    
+    # Calcula as métricas
+    max_val = df_slice['fechamento'].max()
+    min_val = df_slice['fechamento'].min()
+    mediana_val = df_slice['fechamento'].median()
+    media_val = df_slice['fechamento'].mean()
 
-# 5.3 Plotagem com Plotly Graph Objects
+    # Layout de 4 colunas para as métricas
+    col_max, col_min, col_median, col_mean = st.columns(4)
+
+    with col_max:
+        st.metric("Máxima", f"{max_val:,.2f}")
+    
+    with col_min:
+        st.metric("Mínima", f"{min_val:,.2f}")
+        
+    with col_median:
+        st.metric("Mediana", f"{mediana_val:,.2f}")
+        
+    with col_mean:
+        st.metric("Média", f"{media_val:,.2f}")
+        
+    st.markdown("---") # Separador visual
+
+# 5.4 Plotagem com Plotly Graph Objects
 fig_analise = go.Figure()
 
 # Traço 1: Preço Bruto
@@ -245,9 +278,9 @@ fig_analise.update_layout(
 
 st.plotly_chart(fig_analise, use_container_width=True)
 
-# ====================================================================
+#  ----------------------------------------------------
 # 6. SEÇÃO DE PREVISÃO DO MODELO
-# ====================================================================
+#  ----------------------------------------------------
 
 st.markdown("---")
 st.header("🔮 Previsão de Tendência com Machine Learning")
@@ -340,9 +373,6 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
         # Atualiza a feature 'fechamento_lag_1' para o próximo dia com o P_predito
         X_base[fechamento_lag_index] = P_predito
     
-        # ⚠️ ATENÇÃO CRÍTICA: Se o seu modelo usa outras features baseadas em preço (ex: maM_lag_1, volatilidadeS_lag_1), 
-        # você PRECISA de uma lógica aqui para recalculá-las ou o resultado será impreciso.
-    
     # Converte os resultados em DataFrame
     df_futuro = pd.DataFrame(resultados_recursivos)
 
@@ -350,13 +380,7 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
         ✅ **Lógica de Regressão Aplicada:** O modelo prevê o valor do índice. A tendência (+1/-1) é calculada comparando o valor predito com o valor do dia anterior (recursivamente).
     """)
 
-    # AVISO SOBRE FEATURES
-    #st.warning("""
-    #    **Próxima Revisão:** Se a sua previsão ainda não for variada, você deve implementar a lógica para atualizar **todas** as features de lag baseadas em preço (`maS_lag_1`, `volatilidadeM_lag_1`, etc.) usando o `P_predito` a cada iteração.
-    #""")
-         
-
-    
+ 
     # ------------------------------------------------------------------
     # 6.3 VISUALIZAÇÃO DO GRÁFICO (Foco nos últimos 30 dias + Previsão)
     # ------------------------------------------------------------------
