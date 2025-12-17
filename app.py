@@ -291,7 +291,8 @@ opcoes_dias = {
     'Próximo Dia (1)': 1,
     'Próximos 5 Dias': 5,
     'Próximos 10 Dias': 10,
-    'Próximos 15 Dias': 15
+    'Próximos 15 Dias': 15,
+    'Próximos 30 Dias': 30
 }
 
 selecao = st.radio("Selecione a Janela de Previsão", list(opcoes_dias.keys()), horizontal=True)
@@ -321,128 +322,133 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
     for feature in FEATURES:
          df_futuro[feature] = ultimo_df_historico[feature].iloc[0]
     
-    # ------------------------------------------------------------------
-    # 6.2 GERAÇÃO DA PREVISÃO: LÓGICA RECURSIVA PARA REGRESSOR
-    # ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# 6.2 GERAÇÃO DA PREVISÃO: LÓGICA RECURSIVA COMPLETA
+# ------------------------------------------------------------------
 
-    # --- 1. PREPARAÇÃO DO PONTO DE PARTIDA ---
-    # Recupera o último valor real o índice para iniciar a recursão
+# --- 0. MAPEAMENTO DE JANELAS (AJUSTE SE NECESSÁRIO) ---
+# Assumindo estas janelas para os lags: S (Short), M (Medium), A (Annual)
+    WINDOW_MAP = {
+        'S': 5,     # Ex: volatilidadeS_lag_1 -> Janela de 5 dias
+        'M': 20,    # Ex: maM_lag_1 -> Janela de 20 dias
+        'A': 252    # Ex: maA_lag_1 -> Janela de 252 dias
+    }
+# Acha a maior janela necessária para inicializar o histórico
+    MAX_WINDOW = max(WINDOW_MAP.values())
+
+# --- 1. PREPARAÇÃO DO PONTO DE PARTIDA E SÉRIE HISTÓRICA ---
+
+# Recupera o último valor real de preço e o vetor completo de features
     df_ultimo = df_processado.iloc[[-1]]
-    P_last_real = df_ultimo['fechamento'].values[0] # Valor de fechamento real
-
-    # O preço de referência para o primeiro cálculo de tendência (será o P_last_real)
-    P_referencia = P_last_real 
-
-    # Cópia do vetor de features do último dia (base para o loop)
+    P_referencia = df_ultimo['fechamento'].values[0] 
     X_base = df_ultimo[FEATURES].values[0].copy()
 
-    # Encontra o índice da feature de lag do fechamento no vetor FEATURES
+# 1.1 Inicializa a série de preços: Pega o tail da coluna 'fechamento' para os cálculos de rolling
+# Usamos MAX_WINDOW + 1 para ter certeza que temos o suficiente para o primeiro cálculo
+# Histórico de preços para cálculo de médias e volatilidade
+    price_series_history = df_processado['fechamento'].tail(MAX_WINDOW).tolist()
+
+# Localização de índices para atualização recursiva
     try:
-        fechamento_lag_index = FEATURES.index('fechamento_lag_1')
-    except ValueError:
-        st.error("Erro: A feature 'fechamento_lag_1' não foi encontrada na lista de FEATURES. Verifique se o nome está correto no seu DataFrame processado.")
+        idx_p_lag = FEATURES.index('fechamento_lag_1')
+        ma_indices = {n: FEATURES.index(n) for n in FEATURES if n.startswith('ma') and n.endswith('_lag_1')}
+        vol_indices = {n: FEATURES.index(n) for n in FEATURES if n.startswith('volatilidade') and n.endswith('_lag_1')}
+    except ValueError as e:
+        st.error(f"Erro ao localizar features: {e}")
         st.stop()
 
-    # Lista para armazenar as previsões futuras (data e y_pred de TENDÊNCIA)
     resultados_recursivos = []
-    # Lista para armazenar o valor predito (opcional, para debug)
-    precos_preditos = [] 
 
-    # --- 2. LOOP RECURSIVO ---
+
+# --- 2. LOOP RECURSIVO ---
     for i, data_futura in enumerate(datas_futuras):
-        # a. Prepara o vetor X para o modelo e prevê o VALOR
         X_novo = pd.DataFrame([X_base], columns=FEATURES)
     
-        # O modelo prevê o VALOR do fechamento para o dia N+1
-        P_predito = modelo_ml.predict(X_novo)[0] 
+        # Modelo prevê o VALOR EXATO (Regressão)
+        P_predito = float(modelo_ml.predict(X_novo)[0])
     
-        # b. CALCULA A TENDÊNCIA (+1 ou -1)
-        # A tendência é baseada na variação do valor predito (P_predito) em relação ao valor de referência (P_referencia)
+        # Calcula tendência baseada no valor anterior
         T_predita = 1 if P_predito > P_referencia else -1
     
-        # c. Armazena o resultado (a TENDÊNCIA é o que será plotado)
+        # Armazena resultados
         resultados_recursivos.append({
             'ds': data_futura,
-            'y_pred': T_predita 
+            'valor_previsto': P_predito,
+            'tendencia': T_predita
         })
     
-        # d. ATUALIZAÇÃO RECURSIVA para a próxima iteração
-        # A nova referência de preço é o preço que acabamos de prever
+        # ATUALIZAÇÃO RECURSIVA PARA O PRÓXIMO PASSO (N+1)
+        price_series_history.append(P_predito)
+        price_series_history = price_series_history[1:]
+        ps = pd.Series(price_series_history)
+    
+        # Atualiza Lags de Médias Móveis
+        for name, idx in ma_indices.items():
+            w = WINDOW_MAP.get(name[2], 20)
+            X_base[idx] = ps.tail(w).mean()
+        
+        # Atualiza Lags de Volatilidade
+        for name, idx in vol_indices.items():
+            w = WINDOW_MAP.get(name[14], 20)
+            X_base[idx] = ps.tail(w).std()
+    
+        # Atualiza Lag de Preço
+        X_base[idx_p_lag] = P_predito
         P_referencia = P_predito 
-    
-        # Atualiza a feature 'fechamento_lag_1' para o próximo dia com o P_predito
-        X_base[fechamento_lag_index] = P_predito
-    
-    # Converte os resultados em DataFrame
+
     df_futuro = pd.DataFrame(resultados_recursivos)
-
-    st.info("""
-        ✅ **Lógica de Regressão Aplicada:** O modelo prevê o valor do índice. A tendência (+1/-1) é calculada comparando o valor predito com o valor do dia anterior (recursivamente).
-    """)
-
  
-    # ------------------------------------------------------------------
-    # 6.3 VISUALIZAÇÃO DO GRÁFICO (Foco nos últimos 30 dias + Previsão)
-    # ------------------------------------------------------------------
-    
-    st.header(f"Projeção de Tendência ({input_qtd_dias} Dias) - Resultado: {selecao}")
-    
-    DIAS_HISTORICOS_A_MOSTRAR = 30
+# ------------------------------------------------------------------
+# 6.3 VISUALIZAÇÃO DO GRÁFICO (CONEXÃO PERFEITA HISTÓRICO/PREVISÃO)
+# ------------------------------------------------------------------
+    st.header(f"📈 Projeção de Tendência ({input_qtd_dias} Dias)")
+
     df_historico_plot = df_processado[['ds', 'y']].copy().rename(columns={'y': 'Tendência'})
     df_historico_plot['Tipo'] = 'Histórico (Real)'
-    
-    df_futuro_plot = df_futuro[['ds', 'y_pred']].copy().rename(columns={'y_pred': 'Tendência'})
+
+    df_futuro_plot = df_futuro[['ds', 'tendencia']].copy().rename(columns={'tendencia': 'Tendência'})
     df_futuro_plot['Tipo'] = 'Previsão'
-    
-    df_historico_slice = df_historico_plot.tail(DIAS_HISTORICOS_A_MOSTRAR)
-    
-    df_combinado_visualizacao = pd.concat([df_historico_slice, df_futuro_plot])
-    df_combinado_visualizacao['ds'] = pd.to_datetime(df_combinado_visualizacao['ds'])
-    
-    # Cria o gráfico Plotly com Previsões
-    fig = px.line(
-        df_combinado_visualizacao, 
-        x='ds', 
-        y='Tendência', 
-        color='Tipo', 
-        title='Histórico Recente e Previsão de Tendência (+1 Sobe, -1 Desce)',
-        labels={'Tendência': 'Direção do Movimento', 'ds': 'Data'},
+
+    # Ponto de ponte para não haver buraco no gráfico
+    ponto_ponte = df_historico_plot.iloc[[-1]].copy()
+    ponto_ponte['Tipo'] = 'Previsão'
+
+    df_previsao_full = pd.concat([ponto_ponte, df_futuro_plot])
+    df_comp = pd.concat([df_historico_plot.tail(30), df_previsao_full])
+    df_comp.drop_duplicates(subset=['ds'], keep='last', inplace=True)
+
+    fig_prev = px.line(
+        df_comp, x='ds', y='Tendência', color='Tipo',
+        title='Movimentação Prevista: Subida (+1) vs Descida (-1)',
+        labels={'Tendência': 'Tendência', 'ds': 'Data'},
         color_discrete_map={'Histórico (Real)': '#1f77b4', 'Previsão': '#d62728'}
     )
-    
-    fig.add_hline(y=0, line_width=1, line_dash="dash", line_color="gray")
-    fig.add_vline(x=ultima_data_historica, line_width=2, line_dash="dash", line_color="#333333")
-    fig.update_layout(yaxis=dict(
-        tickvals=[-1, 0, 1], 
-        ticktext=['-1 (Desce)', '0 (Neutro)', '+1 (Sobe)'],
-        range=[-1.5, 1.5]
-    ))
-    fig.update_layout(hovermode="x unified")
-    
-    st.plotly_chart(fig, use_container_width=True)
+    fig_prev.update_layout(yaxis=dict(tickvals=[-1, 1], ticktext=['Descida (-1)', 'Subida (+1)'], range=[-1.5, 1.5]))
+    st.plotly_chart(fig_prev, use_container_width=True)
 
-    # ------------------------------------------------------------------
-    # 6.4 TABELA DE PREVISÃO ESTILIZADA
-    # ------------------------------------------------------------------
-    st.subheader("Resultados da Previsão Detalhada")
-    
-    df_tabela = df_futuro_plot.copy()
-    df_tabela['Data'] = df_tabela['ds'].dt.strftime('%d/%m/%Y')
-    df_tabela['Previsão'] = df_tabela['Tendência'].apply(lambda x: 'Subida (+1)' if x == 1 else 'Descida (-1)')
+# ------------------------------------------------------------------
+# 6.4 TABELA DE PREVISÃO DETALHADA (COM VALOR DO ÍNDICE)
+# ------------------------------------------------------------------
+    st.subheader("📋 Tabela de Previsões Detalhada")
 
-    def cor_tendencia(val):
-        if 'Subida' in val:
-            color = 'green'
-        elif 'Descida' in val:
-            color = 'red'
-        else:
-            color = 'black'
-        return f'color: {color}; font-weight: bold;'
+    st.info("""✅
+        **Nota Técnica:** Este modelo é um **XGBRegressor**. Ele foi treinado para estimar o valor exato do índice IBOVESPA. 
+        A tendência (+1 ou -1) exibida abaixo é derivada da comparação do valor previsto com o fechamento do dia anterior.
+    """)
+
+    df_tab = df_futuro.copy()
+    df_tab['Data'] = pd.to_datetime(df_tab['ds']).dt.strftime('%d/%m/%Y')   
+    df_tab['Movimento'] = df_tab['tendencia'].apply(lambda x: 'Subida (+1)' if x == 1 else 'Descida (-1)')
+
+    def style_mov(val):
+        color = 'green' if '+1' in val else 'red'
+        return f'background-color: {color}; color: white; font-weight: bold;'
 
     st.dataframe(
-        df_tabela[['Data', 'Previsão']].style.applymap(cor_tendencia, subset=['Previsão']),
-        use_container_width=True,
-        hide_index=True
+        df_tab[['Data', 'Movimento']].style.applymap(
+            style_mov, subset=['Movimento']
+        ),
+        use_container_width=True, hide_index=True
     )
 
 else:
