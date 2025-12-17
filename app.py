@@ -273,7 +273,11 @@ fig_analise.update_layout(
     xaxis_title='Data',
     yaxis_title='Valor do Índice (R$)',
     hovermode='x unified',
-    template='plotly_white'
+    template='plotly_white',  # Define o tema claro
+    paper_bgcolor='white',    # Fundo externo branco
+    plot_bgcolor='white',     # Fundo do gráfico branco
+    xaxis=dict(showgrid=True, gridcolor='LightGray'), # Grades suaves
+    yaxis=dict(showgrid=True, gridcolor='LightGray')
 )
 
 st.plotly_chart(fig_analise, use_container_width=True)
@@ -421,9 +425,23 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
         df_comp, x='ds', y='Tendência', color='Tipo',
         title='Movimentação Prevista: Subida (+1) vs Descida (-1)',
         labels={'Tendência': 'Tendência', 'ds': 'Data'},
-        color_discrete_map={'Histórico (Real)': '#1f77b4', 'Previsão': '#d62728'}
+        color_discrete_map={'Histórico (Real)': '#1f77b4', 'Previsão': '#d62728'},
+        template='plotly_white' # Tema base branco
     )
-    fig_prev.update_layout(yaxis=dict(tickvals=[-1, 1], ticktext=['Descida (-1)', 'Subida (+1)'], range=[-1.5, 1.5]))
+
+    fig_prev.update_layout(
+        paper_bgcolor='white',
+        plot_bgcolor='white',
+        yaxis=dict(
+            tickvals=[-1, 1], 
+            ticktext=['Descida (-1)', 'Subida (+1)'], 
+            range=[-1.5, 1.5],
+            showgrid=True, 
+            gridcolor='LightGray'
+        ),
+        xaxis=dict(showgrid=True, gridcolor='LightGray'),
+        hovermode="x unified"
+    )
     st.plotly_chart(fig_prev, use_container_width=True)
 
 # ------------------------------------------------------------------
