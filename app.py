@@ -96,18 +96,6 @@ st.sidebar.info(f"Features utilizadas: Valor de abertura do dia, Valores do dia 
 st.write('Período Histórico Analisado:', df['ds'].min(), 'a', df['ds'].max())
 
 
-#Dados disponibilizados para análise
-
-coluna1, coluna2, coluna3, coluna4 = st.columns(4)
-with coluna1:
-    st.metric('Quantidade de Dias Analisados', df['ds'].count())
-with coluna2:
-    st.metric('Máxima do Índice', df['max'].max().round(2))
-with coluna3:
-    st.metric('Mínima do Índice', df['min'].min().round(2))
-with coluna4:
-    st.metric('Média do Índice', df['fechamento'].mean().round(2))
-
 #  ------------------------------------------------------------
 # 5. NOVA SEÇÃO: ANÁLISE EXPLORATÓRIA CUSTOMIZÁVEL (PREÇO BRUTO)
 # --------------------------------------------------------------
