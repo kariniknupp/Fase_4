@@ -269,15 +269,30 @@ if mostrar_std:
 
 # Layout e Customização
 fig_analise.update_layout(
-    title=f'Análise de Fechamento do IBOVESPA - Período Selecionado',
+    title=dict(
+        text=f'Análise de Fechamento do IBOVESPA - Período de {start_date.strftime("%d/%m/%Y")} a {end_date.strftime("%d/%m/%Y")}',
+        font=dict(color='black', size=18)
+    ),
     xaxis_title='Data',
     yaxis_title='Valor do Índice (R$)',
     hovermode='x unified',
     template='plotly_white',  # Define o tema claro
     paper_bgcolor='white',    # Fundo externo branco
-    plot_bgcolor='white',     # Fundo do gráfico branco
-    xaxis=dict(showgrid=True, gridcolor='LightGray'), # Grades suaves
-    yaxis=dict(showgrid=True, gridcolor='LightGray')
+    plot_bgcolor='white',
+    font_color="black", # Define a cor da fonte global como preto
+    xaxis=dict(
+        showgrid=True, 
+        gridcolor='LightGray',
+        title_font=dict(color='black'),
+        tickfont=dict(color='black')
+    ),
+    yaxis=dict(
+        showgrid=True, 
+        gridcolor='LightGray',
+        title_font=dict(color='black'),
+        tickfont=dict(color='black')
+    ),
+    legend=dict(font=dict(color='black'))
 )
 
 st.plotly_chart(fig_analise, use_container_width=True)
@@ -430,16 +445,26 @@ if modelo_ml and df_processado is not None and not df_processado.empty:
     )
 
     fig_prev.update_layout(
+        title=dict(font=dict(color='black', size=18)),
         paper_bgcolor='white',
         plot_bgcolor='white',
+        font_color="black",
         yaxis=dict(
             tickvals=[-1, 1], 
             ticktext=['Descida (-1)', 'Subida (+1)'], 
             range=[-1.5, 1.5],
             showgrid=True, 
-            gridcolor='LightGray'
+            gridcolor='LightGray',
+            title_font=dict(color='black'),
+            tickfont=dict(color='black')
         ),
-        xaxis=dict(showgrid=True, gridcolor='LightGray'),
+        xaxis=dict(
+            showgrid=True, 
+            gridcolor='LightGray',
+            title_font=dict(color='black'),
+            tickfont=dict(color='black')
+        ),
+        legend=dict(font=dict(color='black')),
         hovermode="x unified"
     )
     st.plotly_chart(fig_prev, use_container_width=True)
