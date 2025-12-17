@@ -258,7 +258,7 @@ if mostrar_std:
 # Layout e Customização
 fig_analise.update_layout(
     title=dict(
-        text=f'Análise de Fechamento do IBOVESPA - Período de {start_date.strftime("%d/%m/%Y")} a {end_date.strftime("%d/%m/%Y")}',
+        text=f'Análise de Fechamento do IBOVESPA ',
         font=dict(color='black', size=18)
     ),
     xaxis_title='Data',
